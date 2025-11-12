@@ -1,0 +1,142 @@
+﻿@page
+@using WebApplication5.Services
+@model WebApplication5.Pages.LaptopsModel
+@{
+    DBItemManagement dBItemManagement = new DBItemManagement();
+
+    ViewData["Title"] = "Laptops";
+    var gadColumns = new List<string>();
+    var connectionString = dBItemManagement.GetConnectionString();
+
+    // Sorting logic
+    string sortColumn = Request.Query["sort"];
+    string sortDirection = Request.Query["dir"];
+    var sorter = "";
+    if (!string.IsNullOrEmpty(sortColumn))
+    {
+        sortDirection = sortDirection == "desc" ? "desc" : "asc"; // Default to asc if not desc
+        sorter = $"ORDER BY {sortColumn} {sortDirection}";
+    }else 
+    {
+        sorter = "ORDER BY id DESC"; // Default sorting
+    }
+
+ Func<string, string> GetSortIcon = col =>
+    {
+        if (sortColumn == col)
+        {
+            return sortDirection == "desc" ? "▲" : "▼";
+        }
+        return "";
+    };
+
+    string searchTerm = Request.Query["search"];
+    var getAllData = string.IsNullOrWhiteSpace(searchTerm)
+        ? dBItemManagement.GetAllLaptopData(gadColumns, sorter)
+        : dBItemManagement.GetAllLaptopData(gadColumns, sorter)
+            .Where(laptop =>
+                laptop.ContainsKey("name") && laptop["name"] != null && laptop["name"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                laptop.ContainsKey("OS") && laptop["OS"] != null && laptop["OS"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                laptop.ContainsKey("MAC") && laptop["MAC"] != null && laptop["MAC"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                laptop.ContainsKey("HWID") && laptop["HWID"] != null && laptop["HWID"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+    // sorting UI
+    Func<string, string> GetSortUrl = col =>
+{
+var isActive = sortColumn == col;
+var nextDir = isActive && sortDirection != "desc" ? "desc" : "asc";
+var query = $"?search={searchTerm}&sort={col}&dir={nextDir}";
+return query;
+};
+
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<form method="get" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="search" value="@Request.Query["search"]" class="form-control" placeholder="Search by name, OS, or MAC..." />
+        <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+</form>
+
+@if(getAllData != null && getAllData.Count > 0)
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>
+                    <a href="@GetSortUrl("id")" class="sorterTHButton">
+                        ID @GetSortIcon("id")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("name")" class="sorterTHButton">
+                        Device Name @GetSortIcon("name")
+                    </a>
+                </th>
+                <th>
+                    Apps
+                </th>
+                <th>
+                    <a href="@GetSortUrl("OS")" class="sorterTHButton">
+                        OS @GetSortIcon("OS")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("OSVer")" class="sorterTHButton">
+                        OS Version @GetSortIcon("OSVer")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("lastUpdate")" class="sorterTHButton">
+                        Last Update @GetSortIcon("lastUpdate")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("HWID")" class="sorterTHButton">
+                        HWID @GetSortIcon("HWID")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("MAC")" class="sorterTHButton">
+                        MAC Address @GetSortIcon("MAC")
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("GUID")" class="sorterTHButton">
+                        Is Laptop In Use?
+                    </a>
+                </th>
+                <th>
+                    <a href="@GetSortUrl("GUID")" class="sorterTHButton">
+                        GUID @GetSortIcon("GUID")
+                    </a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var laptop in getAllData)
+            {
+                <tr>
+                    <td>@laptop["id"]</td>
+                    <td>@laptop["name"]</td>
+                    <td><a href="/LaptopDetail?id=@laptop["id"]">View Apps</a></td>
+                    <td>@laptop["OS"]</td>
+                    <td>@laptop["OSVer"]</td>
+                    <td>@(laptop.ContainsKey("lastUpdate") && laptop["lastUpdate"] != null ? DateTime.Parse(laptop["lastUpdate"].ToString()).ToString("yyyy-MM-dd HH:mm:ss") : "N/A")</td>
+                    <td>@laptop["HWID"]</td>
+                    <td>@laptop["MAC"]</td>
+                    <td>@(laptop.ContainsKey("GUID") && !string.IsNullOrEmpty(laptop["GUID"]?.ToString()) && laptop["GUID"].ToString().Length == 36 ? "Yes" : "No")</td>
+                    <td>@laptop["GUID"]</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>No laptops found.</p>
+}
+

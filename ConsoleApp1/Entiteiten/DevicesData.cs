@@ -14,6 +14,8 @@ namespace ConsoleApp1.Entiteiten
         private DateTime lastUpdate;
         private List<apps> AppsInfo;
         private string MAC;
+        private string HWID;
+        private string GUID;
         private List<string> WinGetLog;
 
 
@@ -23,6 +25,8 @@ namespace ConsoleApp1.Entiteiten
         public List<apps> appsInfo { get { return AppsInfo; } set { AppsInfo = value; } }
         public DateTime LastUpdate { get { return lastUpdate; } set { lastUpdate = value; } }
         public string mac { get { return  MAC; } set { MAC = value; } }
+        public string hwid { get { return HWID; } set { HWID = value; } }
+        public string guid { get { return GUID; } set { GUID = value; } }
         public List<string> winGetLog { get { return WinGetLog; } set { WinGetLog = value; } }
 
     }

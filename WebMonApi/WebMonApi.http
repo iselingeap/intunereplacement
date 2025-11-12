@@ -1,0 +1,6 @@
+@WebMonApi_HostAddress = http://localhost:5118
+
+GET {{WebMonApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

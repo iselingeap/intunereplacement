@@ -1,0 +1,136 @@
+﻿@page
+@using Microsoft.Data.SqlClient;
+@using WebApplication5.Services;
+@inject IConfiguration Configuration
+
+@functions {
+
+	DBItemManagement dBItemManagement = new DBItemManagement();
+
+}
+
+@{
+    ViewData["Title"] = "Dashboard";
+
+    var gadColumns = new List<string>();
+	var sorter = "order by id DESC";
+    var getAllData = dBItemManagement.GetAllLaptopData( gadColumns, sorter);
+
+    List<Dictionary<string, object>> activeLaptopInUse = dBItemManagement.GetLaptops( "SELECT * FROM Laptops WHERE GUID IS NOT NULL AND LEN(GUID) = 36");
+    List<Dictionary<string, object>> NotInUse = dBItemManagement.GetLaptops( "SELECT * FROM Laptops WHERE GUID IS NULL OR GUID = ''");
+    List<Dictionary<string, object>> inactiveLaptopLV1 = dBItemManagement.GetLaptops( "SELECT * FROM Laptops WHERE lastUpdate < DATEADD(day, -2, GETDATE()) AND lastUpdate > DATEADD(day, -3, GETDATE())");
+    List<Dictionary<string, object>> inactiveLaptopLV2 = dBItemManagement.GetLaptops( "SELECT * FROM Laptops WHERE lastUpdate < DATEADD(day, -3, GETDATE()) AND lastUpdate > DATEADD(day, -7, GETDATE())");
+    List<Dictionary<string, object>> inactiveLaptopLV3 = dBItemManagement.GetLaptops( "SELECT * FROM Laptops WHERE lastUpdate < DATEADD(day, -7, GETDATE())");
+
+	int activeLaptopInUseCount = activeLaptopInUse.Count;
+	int NotInUseCount = NotInUse.Count;
+	int inactiveLaptopCountLV1 = inactiveLaptopLV1.Count;
+    int inactiveLaptopCountLV2 = inactiveLaptopLV2.Count;
+	int inactiveLaptopCountLV3 = inactiveLaptopLV3.Count;
+}
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+<h1>@ViewData["Title"]</h1>
+
+@if (activeLaptopInUseCount > 0 || inactiveLaptopCountLV1 > 0 || NotInUseCount > 0)
+{
+    <canvas id="laptopPieChart" width="300" height="300"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const ctx = document.getElementById('laptopPieChart').getContext('2d');
+        const laptopPieChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['In Use (active)', 'Inactive 2 day', 'Inactive 3-7 days', 'Inactive 7+ days', 'Not in Use'],
+                datasets: [{
+                    label: 'Laptop Status Distribution',
+                    data: [@activeLaptopInUseCount, @inactiveLaptopCountLV1, @inactiveLaptopCountLV2, @inactiveLaptopCountLV3, @NotInUseCount],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.6)',
+                        'rgba(255, 206, 86, 0.6)',
+                        'rgba(255, 159, 64, 0.6)',
+                        'rgba(255, 99, 132, 0.6)',
+                        'rgba(201, 203, 207, 0.6)'
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(201, 203, 207, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Laptop Status Distribution'
+                    }
+                }
+			}
+        });
+    </script>
+}
+
+@if (getAllData.Count > 0)
+{
+    var laptopGroups = new List<(string Label, int Count, List<Dictionary<string, object>> Data)>
+    {
+        ("Active Laptops", activeLaptopInUseCount, activeLaptopInUse),
+        ("Inactive 2 day", inactiveLaptopCountLV1, inactiveLaptopLV1),
+        ("Inactive 3-7 days", inactiveLaptopCountLV2, inactiveLaptopLV2),
+        ("Inactive 7+ days", inactiveLaptopCountLV3, inactiveLaptopLV3),
+        ("Not in Use", NotInUseCount, NotInUse)
+    };
+
+    var visibleGroups = laptopGroups.Where(g => g.Count > 0).ToList();
+    int columnsPerRow = 2;
+    int totalRows = (int)Math.Ceiling((double)visibleGroups.Count / columnsPerRow);
+
+    for (int row = 0; row < totalRows; row++)
+    {
+        <div class="row g-3 @(row > 0 ? "mt-3" : "")">
+            @for (int col = 0; col < columnsPerRow; col++)
+            {
+                int groupIndex = row * columnsPerRow + col;
+                if (groupIndex >= visibleGroups.Count)
+                {
+                    break;
+                }
+                var group = visibleGroups[groupIndex];
+                <div class="col-md-6">
+                    <label class="form-label">@group.Label (@group.Count)</label>
+                    <ul class="list-group">
+                        @foreach (var laptop in group.Data)
+                        {
+                            var name = laptop.ContainsKey("Name") ? laptop["Name"] : laptop.ContainsKey("name") ? laptop["name"] : "Unknown";
+                            var id = laptop.ContainsKey("id") ? laptop["id"] : laptop.ContainsKey("ID") ? laptop["ID"] : null;
+                            <li class="list-group-item">
+                                @if (id != null)
+                                {
+                                    <a href="LaptopDetail?id=@id">@name</a>
+                                }
+                                else
+                                {
+                                    @name
+                                }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+    }
+}
+else
+{
+    <p>No laptops found.</p>
+}
+

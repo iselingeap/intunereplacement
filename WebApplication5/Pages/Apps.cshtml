@@ -1,0 +1,116 @@
+﻿@page
+@using WebApplication5.Services;
+
+
+@{
+	DBItemManagement dBItemManagement = new DBItemManagement();
+
+	ViewData["Title"] = "Apps";
+
+	var gadColumns = new List<string>();
+
+	string sortColumn = Request.Query["sort"];
+	string sortDirection = Request.Query["dir"];
+	var sorter = "";
+
+	if (!string.IsNullOrEmpty(sortColumn))
+	{
+		sortDirection = sortDirection == "desc" ? "desc" : "asc"; // Default to asc if not desc
+		sorter = $"ORDER BY {sortColumn} {sortDirection}";
+	}
+	else
+	{
+		sorter = "ORDER BY name"; // Default sorting
+	}
+
+	// Handle toggle pin (existing)
+	var pressedPin = Request.Method == "POST" ? Request.Form["buttonPin"].ToString() : "";
+	if (!string.IsNullOrEmpty(pressedPin))
+	{
+		dBItemManagement.ToggleAppPinnedStatus(pressedPin);
+	}
+
+
+	string searchTerm = Request.Query["search"];
+	var getAllData = string.IsNullOrWhiteSpace(searchTerm)
+		? dBItemManagement.GetAllAppData(gadColumns, sorter)
+		: dBItemManagement.GetAllAppData(gadColumns, sorter)
+			.Where(app =>
+				app.ContainsKey("name") && app["name"] != null && app["name"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)
+			).ToList();	
+
+	Func<string, string> GetSortUrl = col =>
+	{
+		var isActive = sortColumn == col;
+		var nextDir = isActive && sortDirection != "desc" ? "desc" : "asc";
+		var query = $"?search={searchTerm}&sort={col}&dir={nextDir}";
+		return query;
+	};
+	Func<string, string> GetSortIcon = col =>
+	{
+		if (sortColumn == col)
+		{
+			return sortDirection == "desc" ? "▲" : "▼";
+		}
+		return "";
+	};	
+}
+
+
+
+<h1>@ViewData["Title"]</h1>
+<p>Manage your applications here.</p>
+
+<form method="get" class="mb-3">
+	<div class="input-group">
+		<input type="text" name="search" value="@Request.Query["search"]" class="form-control" placeholder="Zoek op Naam" />
+		<button type="submit" class="btn btn-primary">Search</button>
+	</div>
+</form>
+
+@if (getAllData != null && getAllData.Count > 0)
+{
+	<table class="table table-hover table-sm">
+		<thead>
+			<tr>
+				<th><a href="@GetSortUrl("name")" class="sorterTHButton">Name @GetSortIcon("name")</a></th>
+				<th>Used By</th>
+				<th><a href="@GetSortUrl("app_id")" class="sorterTHButton">App ID @GetSortIcon("app_id")</a></th>
+				<th><a href="@GetSortUrl("installedVersion")" class="sorterTHButton">Installed Version @GetSortIcon("installedVersion")</a></th>
+				<th><a href="@GetSortUrl("AvailableVersions")" class="sorterTHButton">Avaialable Versions @GetSortIcon("AvailableVersions")</a></th>
+				<th><a href="@GetSortUrl("isUpdateAvailable")" class="sorterTHButton">Is there new update? @GetSortIcon("isUpdateAvailable")</a></th>
+				<th><a href="@GetSortUrl("pinned")" class="sorterTHButton">Pinned @GetSortIcon("pinned")</a></th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var app in getAllData)
+			{
+				bool isPinned = false;
+				if (app.ContainsKey("pinned") && app["pinned"] != null)
+				{
+					bool.TryParse(app["pinned"].ToString(), out isPinned);
+				}
+
+				<tr>
+					<td>@app["name"]</td>
+					<td><a href="/DetailApp?app=@app["app_id"]&ver=@app["installedVersion"]">List</a></td>
+					<td>@app["app_id"]</td>
+					<td>@app["installedVersion"]</td>
+					<td>@app["AvailableVersions"]</td>
+					<td>@(app["IsUpdateAvailable"]?.ToString())</td>
+					<td>
+						<form method="post" >
+							<input type="hidden" name="buttonPin" value="@app["app_id"]" />
+							<button type="submit" class="btn btn-link"> @(isPinned ? "Unpin" : "Pin")</button>
+						</form>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+
+}
+else
+{
+	<p>No applications found.</p>
+}

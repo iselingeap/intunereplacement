@@ -1,0 +1,65 @@
+﻿@page
+@using System.Runtime.InteropServices.JavaScript
+@using WebApplication5.Services;
+@inject IHttpContextAccessor HttpContextAccessor
+@model IndexModel
+@{
+    ViewData["Title"] = "Home page";
+    string? loginMessage = null;
+    bool isLoggedIn = false;
+
+    // Use HttpContextAccessor to access session
+    var session = HttpContextAccessor.HttpContext?.Session;
+
+    if (session?.GetString("IsLoggedIn") == "true")
+    {
+        // Already logged in, redirect to dashboard
+        Response.Redirect("/Dashboard");
+        return;
+    }
+
+    string? username = Request.Query["username"];
+    string? password = Request.Query["password"];
+    if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
+    {
+        var connectionString = new DBItemManagement().GetConnectionString();
+        bool isValidUser = new DBItemManagement().ValidateUser(username, password);
+        if (isValidUser)
+        {
+            isLoggedIn = true;
+            session?.SetString("IsLoggedIn", "true");
+            Response.Redirect("/Dashboard");
+            return;
+        }
+        else
+        {
+            loginMessage = "Invalid username or password.";
+        }
+    }
+}
+
+<h2>Login</h2>
+@if (!isLoggedIn)
+{
+    <form method="get">
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required />
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required />
+        </div>
+        <button type="submit">Login</button>
+    </form>
+}
+else
+{
+    <p>You are logged in.</p>
+}
+
+@if (loginMessage != null)
+{
+    <p>@loginMessage</p>
+}
+

@@ -1,0 +1,95 @@
+﻿@page
+@using WebApplication5.Services;
+@model WebApplication5.Pages.LaptopDetailModel
+@{
+	ViewData["Title"] = "Laptop Detail";
+	string laptopId = Request.Query["id"];
+	string searchTerm = Request.Query["search"];
+	string sortColumn = Request.Query["sort"];
+	string sortDirection = Request.Query["dir"];
+	string sorter = "";
+
+	// Build sorter string for DB query
+	if (!string.IsNullOrEmpty(sortColumn))
+	{
+		sorter = $"order by {sortColumn} {(sortDirection == "desc" ? "DESC" : "ASC")}";
+	}
+
+	var gadColumns = new List<string>();
+	DBItemManagement dBItemManagement = new DBItemManagement();
+
+	// Filtering and sorting logic
+	List<Dictionary<string, object>> laptopDetails = new List<Dictionary<string, object>>();
+	var allApps = dBItemManagement.GetAllAppsOnLaptop( gadColumns, laptopId, sorter);
+	if (!string.IsNullOrWhiteSpace(searchTerm))
+	{
+		laptopDetails = allApps
+			.Where(app =>
+				(app.ContainsKey("name") && app["name"] != null && app["name"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+				(app.ContainsKey("installedVersion") && app["installedVersion"] != null && app["installedVersion"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+				(app.ContainsKey("AvailableVersions") && app["AvailableVersions"] != null && app["AvailableVersions"].ToString().Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+			).ToList();
+	}
+	else
+	{
+		laptopDetails = allApps;
+	}
+
+
+
+	Func<string, string> GetSortUrl = col =>
+	{
+		var isActive = sortColumn == col;
+		var nextDir = isActive && sortDirection != "desc" ? "desc" : "asc";
+		var query = $"?id={laptopId}&search={searchTerm}&sort={col}&dir={nextDir}";
+		return query;
+	};
+	Func<string, string> GetSortIcon = col =>
+	{
+		if (sortColumn == col)
+		{
+			return sortDirection == "desc" ? "▲" : "▼";
+		}
+		return "";
+	};
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<form method="get" class="mb-3">
+	<input type="hidden" name="id" value="@laptopId" />
+	<div class="input-group">
+		<input type="text" name="search" value="@searchTerm" class="form-control" placeholder="Search apps..." />
+		<button type="submit" class="btn btn-primary">Search</button>
+	</div>
+</form>
+
+@if (laptopDetails != null && laptopDetails.Count > 0)
+{
+	
+	<table class="table table-striped">
+		<thead>
+			<tr>
+				<th><a href="@GetSortUrl("name")" class="sorterTHButton">Name @GetSortIcon("name")</a></th>
+				<th><a href="@GetSortUrl("app_id")" class="sorterTHButton">App ID @GetSortIcon("app_id")</a></th>
+				<th><a href="@GetSortUrl("installedVersion")" class="sorterTHButton">installedVersion @GetSortIcon("installedVersion")</a></th>
+				<th><a href="@GetSortUrl("AvailableVersions")" class="sorterTHButton">AvailableVersions @GetSortIcon("AvailableVersions")</a></th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var app in laptopDetails)
+			{
+				<tr>
+					<td>@(app.ContainsKey("name") ? app["name"] : "N/A")</td>
+					<td>@(app.ContainsKey("app_id") ? app["app_id"] : "N/A")</td>
+					<td>@(app.ContainsKey("installedVersion") ? app["installedVersion"] : "N/A")</td>
+					<td>@(app.ContainsKey("AvailableVersions") ? app["AvailableVersions"] : "N/A")</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+else
+{
+	<p>No applications found for the specified laptop.</p>
+}

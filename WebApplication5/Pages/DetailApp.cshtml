@@ -1,0 +1,55 @@
+﻿@page
+@using WebApplication5.Services;
+@model WebApplication5.Pages.DetailAppModel
+@{
+
+	ViewData["Title"] = "App Expanded View";
+
+	string appId = Request.Query["app"];
+	string appVer = Request.Query["ver"];
+
+	var gadColumns = new List<string>();
+
+
+	var appDetails = new DBItemManagement().GetAllLaptopsUsingApp(gadColumns, appId, appVer);
+
+	
+}
+
+
+<h1>@ViewData["Title"]</h1>
+
+@if (appDetails != null && appDetails.Count > 0)
+{
+	<table class="table table-striped">
+		<thead>
+			<tr>
+				<th>ID</th>
+				<th>Name</th>
+				<th>OS</th>
+				<th>MAC</th>
+				<th>HWID</th>
+				<th>Last Update</th>
+			</tr>
+		</thead>
+		<tbody>
+			@foreach (var laptop in appDetails)
+			{
+				<tr>
+					<td>@(laptop.ContainsKey("id") ? laptop["id"] : "N/A")</td>
+					<td>@(laptop.ContainsKey("name") ? laptop["name"] : "N/A")</td>
+					<td>@(laptop.ContainsKey("os") ? laptop["os"] : "N/A")</td>
+					<td>@(laptop.ContainsKey("MAC") ? laptop["MAC"] : "N/A")</td>
+					<td>@(laptop.ContainsKey("HWID") ? laptop["HWID"] : "N/A")</td>
+					<td>@(laptop.ContainsKey("lastUpdate") ? laptop["lastUpdate"] : "N/A")</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+else
+{
+	<p>No laptops found with the specified application.</p>
+}
+
+

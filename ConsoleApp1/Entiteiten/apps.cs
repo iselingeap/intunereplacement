@@ -13,12 +13,14 @@ namespace ConsoleApp1.Entiteiten
         private string installedVersion;
         private bool isUpdateAvailable;
         private string availableVersions;
+        private bool Pinned;
 
         public string Name { get { return name; } set { name = value; } }
         public string Id { get { return id; } set { id = value; } }
         public string InstalledVersion { get { return installedVersion; } set { installedVersion = value; } }
         public bool IsUpdateAvailable { get { return isUpdateAvailable; } set { isUpdateAvailable = value; } }
         public string AvailableVersions { get { return availableVersions; } set { availableVersions = value; } }
+        public bool pinned { get { return Pinned; } set { Pinned = value; } }
 
         public override string ToString()
         {

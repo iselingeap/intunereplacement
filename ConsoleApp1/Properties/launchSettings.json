@@ -6,6 +6,10 @@
       "authenticationMode": "None",
       "remoteDebugMachine": "192.168.1.5:4026",
       "sqlDebugging": true
+    },
+    "WSL": {
+      "commandName": "WSL2",
+      "distributionName": ""
     }
   }
 }

@@ -1,0 +1,626 @@
+﻿@page
+@using WebApplication5.Services
+@using System.Linq
+
+@{
+    DBItemManagement dBItemManagement = new DBItemManagement();
+
+    ViewData["Title"] = "Opdrachten";
+    var gadColumnsTasks = new List<string>();
+	var gadColumnsLaptops = new List<string>();
+	var getAllDataLaptops = dBItemManagement.GetAllLaptopData(gadColumnsLaptops);
+	var userCreatedTasks = new List<Dictionary<string, object>>();
+    var connectionString = dBItemManagement.GetConnectionString();
+
+    // Variables to prefill the creation/edit form 
+    var editCommandName = "";
+    var editCommandInput = "";
+    var editOriginalTaskId = "";
+    var editOriginalTaskName = "";
+    var editTaskType = "";
+
+    dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+
+	var ructaskValue = Request.Method == "POST" ? Request.Form["RUCTASK"].ToString() : "";
+    var sendCommandValue = Request.Method == "POST" ? Request.Form["requestType"].ToString() : "";
+    var userActionValue = Request.Method == "POST" ? Request.Form["userAction"].ToString() : "";
+	var selectedLaptops = Request.Method == "POST" ? Request.Form["Laptops[]"].ToList() : new List<string>();
+
+	ViewData["run"] = ructaskValue;
+
+    // If the form posts an OriginalTaskId (hidden input), propagate it into editOriginalTaskId
+    var formOriginalTaskId = Request.Method == "POST" ? (Request.Form["OriginalTaskId"].ToString() ?? "") : "";
+    if (!string.IsNullOrEmpty(formOriginalTaskId))
+    {
+        editOriginalTaskId = formOriginalTaskId;
+    }
+
+    // If user clicked edit on a task earlier in the request lifecycle
+    if (!string.IsNullOrEmpty(userActionValue) && !string.IsNullOrEmpty(ructaskValue))
+    {
+        if (int.TryParse(ructaskValue, out var taskId))
+        {
+            if (userActionValue == "delete")
+            {
+                dBItemManagement.DeleteUserCreatedTask(taskId);
+                userCreatedTasks.Clear();
+                dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+                ViewData["SuccessMessage"] = "Taak verwijderd.";
+            }
+            else if (userActionValue == "run")
+            {
+                if (selectedLaptops.Count == 0)
+                {
+                    ViewData["ErrorMessage"] = "Selecteer minimaal één laptop om de taak uit te voeren.";
+                }
+                else
+                {
+                    dBItemManagement.SendScriptToTaskSystem(taskId, selectedLaptops);
+                    ViewData["SuccessMessage"] = "Taak gestart.";
+                }
+            }
+            else if (userActionValue == "edit")
+            {
+                // Populate form data from DB (fresh)
+                var taskToEdit = dBItemManagement.GetUserCreatedTaskById(taskId);
+                if (taskToEdit != null)
+                {
+                    editOriginalTaskId = ructaskValue;
+                    editOriginalTaskName = taskToEdit.ContainsKey("name") ? taskToEdit["name"]?.ToString() ?? "" : "";
+                    editCommandName = editOriginalTaskName;
+
+                    // Fetch stored command from likely keys
+                    var storedCommand = "";
+                    if (taskToEdit.ContainsKey("powerShellScript"))
+                        storedCommand = taskToEdit["powerShellScript"]?.ToString() ?? "";
+                    else if (taskToEdit.ContainsKey("command"))
+                        storedCommand = taskToEdit["command"]?.ToString() ?? "";
+                    else if (taskToEdit.ContainsKey("script"))
+                        storedCommand = taskToEdit["script"]?.ToString() ?? "";
+
+                    editCommandInput = storedCommand ?? "";
+
+                    // Detect prefix case-insensitively and remove it for editing
+                    if (!string.IsNullOrEmpty(editCommandInput))
+                    {
+                        if (editCommandInput.StartsWith("COMMAND:", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            editCommandInput = editCommandInput.Substring(8);
+                            editTaskType = "command";
+                        }
+                        else if (editCommandInput.StartsWith("SCRIPT:", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            editCommandInput = editCommandInput.Substring(7);
+                            editTaskType = "script";
+                        }
+                        else
+                        {
+                            // If no prefix, keep default (empty) or set to command by default
+                            editTaskType = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!string.IsNullOrEmpty(sendCommandValue))
+    {
+        // Read form fields with safe fallbacks to avoid nullability warnings
+        var commandName = (Request.Form["commandName"].ToString() ?? "").Trim();
+        var commandInput = (Request.Form["commandInput"].ToString() ?? "");
+		var taskType = (Request.Form["TaskType"].ToString() ?? "");
+        var prefixedCommandInput = commandInput; // Default to original input
+
+        // If the form contained OriginalTaskId, ensure editOriginalTaskId is populated (this preserves edit mode across POST)
+        var postedOriginalTaskId = Request.Form["OriginalTaskId"].ToString();
+        if (!string.IsNullOrEmpty(postedOriginalTaskId))
+        {
+            editOriginalTaskId = postedOriginalTaskId;
+        }
+
+        // Determine if currently editing by checking editOriginalTaskId
+        int originalTaskId = 0;
+        var isEditing = !string.IsNullOrEmpty(editOriginalTaskId) && int.TryParse(editOriginalTaskId, out originalTaskId);
+
+        // Prefix commandInput based on TaskType
+        if (taskType == "command")
+		{
+			prefixedCommandInput = "COMMAND:" + commandInput;
+		}
+		else if (taskType == "script")
+		{
+			prefixedCommandInput = "SCRIPT:" + commandInput;
+		}
+
+        // Duplicate-name check (case-insensitive).
+        // If editing, exclude the original task from duplicate detection.
+        var nameExists = userCreatedTasks.Any(t =>
+        {
+            if (isEditing && t.ContainsKey("id") && t["id"]?.ToString() == editOriginalTaskId)
+                return false;
+            var n = t.ContainsKey("name") ? (t["name"]?.ToString() ?? "") : "";
+            return string.Equals(n, commandName ?? "", StringComparison.OrdinalIgnoreCase);
+        });
+
+        if (isEditing)
+        {
+            // Fetch original task from DB to get canonical original name (avoid using possibly stale in-memory list)
+            var originalTaskFromDb = dBItemManagement.GetUserCreatedTaskById(originalTaskId);
+            var originalTaskName = originalTaskFromDb != null && originalTaskFromDb.ContainsKey("name")
+                                    ? originalTaskFromDb["name"]?.ToString() ?? ""
+                                    : "";
+
+            // Fallback: try in-memory list if DB lookup failed
+            if (string.IsNullOrEmpty(originalTaskName))
+            {
+                var originalTaskInList = userCreatedTasks.FirstOrDefault(t => t.ContainsKey("id") && t["id"]?.ToString() == editOriginalTaskId);
+                if (originalTaskInList != null)
+                    originalTaskName = originalTaskInList.ContainsKey("name") ? originalTaskInList["name"]?.ToString() ?? "" : "";
+            }
+
+            // Determine if the name changed (case-insensitive comparison)
+            var isNameChanged = !string.Equals(commandName ?? "", originalTaskName ?? "", StringComparison.OrdinalIgnoreCase);
+
+            if (!isNameChanged)
+            {
+                // Name is the same, update existing task content (simulate update by delete+save as before)
+                if ((sendCommandValue == "sar" || sendCommandValue == "run") && selectedLaptops.Count == 0)
+                {
+                    ViewData["ErrorMessage"] = "Selecteer minimaal één laptop om de taak uit te voeren.";
+                    // Skip execution if no laptops are selected
+                    sendCommandValue = "";
+                }
+
+                if (sendCommandValue == "sar")
+                {
+                    dBItemManagement.DeleteUserCreatedTask(originalTaskId);
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                    userCreatedTasks.Clear();
+                    dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+                    ViewData["SuccessMessage"] = "Taak opgeslagen en uitgevoerd.";
+                }
+                else if (sendCommandValue == "run")
+                {
+                    dBItemManagement.DeleteUserCreatedTask(originalTaskId);
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    ViewData["SuccessMessage"] = "Taak bijgewerkt.";
+                }
+                else if (sendCommandValue == "save")
+                {
+                    // Name unchanged, just update content
+                    dBItemManagement.DeleteUserCreatedTask(originalTaskId);
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    userCreatedTasks.Clear();
+                    dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+                    ViewData["SuccessMessage"] = "Taak is bijgewerkt.";
+                }
+            }
+            else
+            {
+                // Name has changed: check duplicates excluding original (we already excluded original in nameExists)
+                if (nameExists)
+                {
+                    ViewData["ErrorMessage"] = "Een taak met deze naam bestaat al. Wijzig alstublieft de naam.";
+                }
+                else
+                {
+                    // Save as a new script (do NOT delete original)
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    ViewData["SuccessMessage"] = "Taak is opgeslagen als nieuwe script.";
+                }
+            }
+        }
+        else
+        {
+            // Not editing, regular save/run logic applies
+            if (sendCommandValue == "run")
+            {
+                dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                ViewData["SuccessMessage"] = "Taak uitgevoerd.";
+            }
+            else if (sendCommandValue == "save")
+            {
+                if (nameExists)
+                {
+                    ViewData["ErrorMessage"] = "A task with that name already exists.";
+                }
+                else
+                {
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    userCreatedTasks.Clear();
+                    dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+                    ViewData["SuccessMessage"] = "Taak is opgeslagen.";
+                }
+            }
+            else if (sendCommandValue == "sar")
+            {
+                if (nameExists)
+                {
+                    // If name exists, do not save again but still run the command
+                    ViewData["ErrorMessage"] = "A task with that name already exists. Running without saving.";
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                }
+                else
+                {
+                    dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                    userCreatedTasks.Clear();
+                    dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
+                    ViewData["SuccessMessage"] = "Taak opgeslagen en uitgevoerd.";
+                }
+            }
+		}
+	}
+
+}
+
+<head>
+<h1>@ViewData["Title"]</h1>
+
+    <style>
+        .laptops-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.5rem;
+            align-items: start;
+            margin: 0.5rem 0;
+            max-height: 50vh; 
+            overflow: auto;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        .laptop-card {
+            display: flex;
+            align-items: center;
+            max-height: 150vh;
+            gap: 0.5rem;
+            padding: 0.375rem 0.5rem;
+            border-radius: 4px;
+            background: #fff;
+            border: 1px solid transparent;
+        }
+        .laptop-card.hidden {
+            display: none ;
+        }
+        .laptop-meta {
+            font-size: 0.85rem;
+            color: #666;
+        }
+        #laptopSearch {
+            width: 100%;
+            max-width: 480px;
+            max-height: 50px;
+            margin-bottom: 0.5rem;
+        }
+        .User-Tasks-Box{
+            display: grid;
+            width: 49%;
+        }
+
+        .test{
+			display: flex;
+            flex-wrap: wrap;
+            justify-content: space-evenly;
+            
+        }
+
+    </style>
+</head>
+<body>
+<div>
+    @if (!string.IsNullOrEmpty(ViewData["ErrorMessage"] as string))
+    {
+        <div class="alert alert-warning">@ViewData["ErrorMessage"]</div>
+    }
+    @if (!string.IsNullOrEmpty(ViewData["InfoMessage"] as string))
+    {
+        <div class="alert alert-info">@ViewData["InfoMessage"]</div>
+    }
+    @if (!string.IsNullOrEmpty(ViewData["SuccessMessage"] as string))
+    {
+        <div class="alert alert-success">@ViewData["SuccessMessage"]</div>
+    }
+
+    <h3>Vul here in de PowerShell script/command:</h3>
+
+    <form id="commandForm" method="post">
+        <div class="mb-3">
+            <input type="text" class="form-control" id="commandName" name="commandName" placeholder="Command Name" required value="@editCommandName" /><br>
+            <textarea class="form-control" id="commandInput" name="commandInput" placeholder="Vull here u script/command" required>@editCommandInput</textarea>
+                <input type="radio" id="command" name="TaskType" value="command" required @if(editTaskType == "command") { <text>checked</text> }>
+                <label for="command">Command</label><br>
+                <input type="radio" id="script" name="TaskType" value="script" @if(editTaskType == "script") { <text>checked</text> }>
+                <label for="script">Script</label><br>
+        </div>
+        <input type="hidden" name="OriginalTaskId" value="@editOriginalTaskId" />
+        <input type="hidden" name="OriginalTaskName" value="@editOriginalTaskName" />
+        <button type="submit" class="btn btn-primary" value="run" name="requestType" >Run</button>
+        <button type="submit" class="btn btn-primary" value="save" name="requestType">Save</button>
+        <button type="submit" class="btn btn-primary" value="sar" name="requestType">Save and Run</button>
+    </form>
+
+        <hr>
+        <form method="post">
+        <h4>Select Laptops</h4>
+        <input id="laptopSearch" class="form-control mb-2" type="search" placeholder="Search by name, hwid, guid or id" aria-label="Search laptops" />
+            <div id="hiddenLaptopsContainer"></div>
+
+            <strong>Selected laptops:</strong>
+            <div id="selectedList">None</div>
+            <div class="test">
+                <div style="width:49%;">
+            <div id="laptopsContainer" class="laptops-grid overflow-scroll" role="list" overflow-scroll>
+            @foreach(var laptop in getAllDataLaptops)
+            {
+                var id = laptop["id"]?.ToString() ?? "";
+                var name = laptop["name"]?.ToString() ?? "";
+                    var hwid = laptop.ContainsKey("HWID") ? laptop["HWID"]?.ToString() ?? "" : "";
+                    var guid = laptop.ContainsKey("GUID") ? laptop["GUID"]?.ToString() ?? "" : "";
+                    <div for="laptop_@id" class="form-check laptop-card" role="listitem" data-id="@id" data-name="@name" data-hwid="@hwid" data-guid="@guid">
+                        <input class="form-check-input laptop-checkbox position-sticky top-100 start-100" type="checkbox" id="laptop_@id" data-id="@id" data-name="@name" data-hwid="@hwid" data-guid="@guid" />
+                        <label class="form-check-label" for="laptop_@id">
+                        <div>@name</div>
+                        <div class="laptop-meta">
+                            @if(!string.IsNullOrEmpty(hwid)){ <span>HWID: @hwid</span> }
+                            @if(!string.IsNullOrEmpty(guid)){ <br><span>GUID: @guid</span> }
+                            <br><span>ID: @id</span>
+                        </div>
+                    </label>
+                </div>
+            }
+            </div>
+        </form>
+    </div>
+    <div class="User-Tasks-Box">
+ 
+        <table class="table table-sm">
+          
+            <thead>
+                
+                <tr>
+                    <th>Command Name</th>
+                    <th>Command</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var task in userCreatedTasks)
+                {
+                    var taskId = task.ContainsKey("id") ? task["id"]?.ToString() ?? "" : "";
+                    <tr>
+                        <td>@(task.ContainsKey("name") ? task["name"] : "")</td>
+                        <td>
+                            <form method="post" onsubmit="return confirmDelete(event, this);">
+                                <input type="hidden" name="RUCTASK" value="@taskId" />
+                                <button type="submit" class="btn btn-primary" name="userAction" value="run">Run</button>
+                                <button type="submit" class="btn btn-danger" name="userAction" value="delete">Delete</button>
+                                <button type="submit" class="btn btn-secondary" name="userAction" value="edit">Edit</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+
+    <div class="mt-2">
+        
+    </div>
+
+
+<br>
+<div>
+    
+    
+</div>
+    <script>
+        /*
+        PSEUDOCODE PLAN (kept here as a comment):
+        - The server reads selected laptops from Request.Form["Laptops[]"].
+        - Ensure every form submission on the page includes the currently selected laptops.
+        - Keep an in-memory client-side list 'selectedLaptopIds' (JSON strings with id and name).
+        - When selection changes, update UI and keep hidden inputs in a container (hiddenLaptopsContainer) for the laptops-form.
+        - On any form submit (document-level 'submit' event), remove any existing 'Laptops[]' hidden inputs in the submitting form,
+          then append hidden inputs for each selected laptop id so the server receives them as Request.Form["Laptops[]"].
+        - This approach covers:
+            * the main command form (run/save/sar),
+            * the per-task action forms (run/delete/edit),
+            * and any other forms that might be added later.
+        - Keep the rest of the selection UX unchanged.
+        */
+
+        // Confirmation helper for delete buttons
+        function confirmDelete(e, form) {
+            var submitter = e.submitter || document.activeElement;
+            if (submitter && submitter.name === 'userAction' && submitter.value === 'delete') {
+                return confirm('Are you sure you want to delete this saved task?');
+            }
+            return true;
+        }
+
+        (function() {
+            // Keep selected ids as strings (JSON)
+            var selectedLaptopIds = [];
+
+            function updateSelectedUI() {
+                var selectedList = document.getElementById('selectedList');
+                var hiddenContainer = document.getElementById('hiddenLaptopsContainer');
+
+                // Clear hidden inputs in the visible laptops form container (keeps that form usable)
+                hiddenContainer.innerHTML = '';
+
+                if (selectedLaptopIds.length === 0) {
+                    selectedList.textContent = 'None';
+                    return;
+                }
+
+                var names = [];
+                selectedLaptopIds.forEach(function(item) {
+                    // item is an object stored as JSON strings
+                    try {
+                        var obj = JSON.parse(item);
+                        names.push(obj.name);
+
+                        // Create hidden input for the laptops form submission: Laptops[]'
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'Laptops[]';
+                        input.value = obj.id;
+                        hiddenContainer.appendChild(input);
+                    } catch (e) {
+                        // ignore parse errors
+                    }
+                });
+
+                selectedList.textContent = names.join(', ');
+            }
+
+            function onCheckboxChange(e) {
+                var cb = e.target;
+                var id = cb.getAttribute('data-id') || '';
+                var name = cb.getAttribute('data-name') || '';
+                var entry = JSON.stringify({ id: id, name: name });
+
+                if (cb.checked) {
+                    // add if not exists
+                    if (!selectedLaptopIds.includes(entry)) {
+                        selectedLaptopIds.push(entry);
+                    }
+                } else {
+                    // remove
+                    selectedLaptopIds = selectedLaptopIds.filter(function(x) { return x !== entry; });
+                }
+                updateSelectedUI();
+            }
+
+            function filterLaptops(query) {
+                query = (query || '').trim().toLowerCase();
+                var cards = document.querySelectorAll('.laptop-card');
+                if (!query) {
+                    cards.forEach(function(card) { card.classList.remove('hidden'); });
+                    return;
+                }
+                cards.forEach(function(card){
+                    var id = (card.getAttribute('data-id') || '').toLowerCase();
+                    var name = (card.getAttribute('data-name') || '').toLowerCase();
+                    var hwid = (card.getAttribute('data-hwid') || '').toLowerCase();
+                    var guid = (card.getAttribute('data-guid') || '').toLowerCase();
+
+                    var match = id.indexOf(query) !== -1 || name.indexOf(query) !== -1 || hwid.indexOf(query) !== -1 || guid.indexOf(query) !== -1;
+                    if (match) {
+                        card.classList.remove('hidden');
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+            }
+
+            // Append selected laptop hidden inputs into the given form (removing previous ones first)
+            function appendSelectedToForm(form) {
+                if (!form) return;
+
+                // Remove existing Laptops[] inputs in this form to avoid duplication
+                var existing = form.querySelectorAll('input[name="Laptops[]"]');
+                existing.forEach(function(i) { i.parentNode && i.parentNode.removeChild(i); });
+
+                // Append current selected laptops
+                selectedLaptopIds.forEach(function(item) {
+                    try {
+                        var obj = JSON.parse(item);
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'Laptops[]';
+                        input.value = obj.id;
+                        form.appendChild(input);
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+            }
+
+            function init() {
+                var checkboxes = document.querySelectorAll('.laptop-checkbox');
+                checkboxes.forEach(function(cb) {
+                    cb.addEventListener('change', onCheckboxChange);
+                });
+
+                // If any checkboxes are pre-checked, initialize state
+                checkboxes.forEach(function(cb) {
+                    if (cb.checked) {
+                        var id = cb.getAttribute('data-id') || '';
+                        var name = cb.getAttribute('data-name') || '';
+                        var entry = JSON.stringify({ id: id, name: name });
+                        if (!selectedLaptopIds.includes(entry)) selectedLaptopIds.push(entry);
+                    }
+                });
+
+                updateSelectedUI();
+
+                // Hook up search/filter
+                var search = document.getElementById('laptopSearch');
+                var filterTimeout = null;
+                if (search) {
+                    search.addEventListener('input', function() {
+                        if (filterTimeout) clearTimeout(filterTimeout);
+                        filterTimeout = setTimeout(function() {
+                            filterLaptops(search.value);
+                        }, 120);
+                    });
+                }
+
+                // Ensure any form submitted on the page includes the selected laptops
+                document.addEventListener('submit', function(e) {
+                    try {
+                        var form = e.target;
+                        appendSelectedToForm(form);
+                        // allow submit to continue
+                    } catch (err) {
+                        // swallow errors to avoid blocking submits
+                    }
+                }, true); // use capture to catch submit on forms before they are handled
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
