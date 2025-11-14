@@ -18,16 +18,72 @@ namespace ConsoleApp1.Service
 
         public void StartConnection()
         {
-            var datasource = @"(localdb)\MSSQLLocalDB";//server
-            var database = "MonitoringApp"; //database
-            var username = @"johnny"; //username
-            var password = "test"; //password
-            string connString = $"Data Source={datasource};Initial Catalog={database};User ID={username};Password={password}";
+
+            // Locate dbconfig.json
+            string configPath = System.IO.Path.Combine(AppContext.BaseDirectory ?? string.Empty, "dbconfig.json");
+            if (!System.IO.File.Exists(configPath))
+            {
+                // Try current directory as fallback
+                var alt = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "dbconfig.json");
+                if (System.IO.File.Exists(alt))
+                    configPath = alt;
+            }
+
+            string connString = null;
+
+            if (System.IO.File.Exists(configPath))
+            {
+                try
+                {
+                    string json = System.IO.File.ReadAllText(configPath);
+                    var jo = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(json);
+
+                    // Try direct keys first
+                    connString = jo?.Value<string>("ConnectionString")
+                                 ?? jo?.Value<string>("DefaultConnection");
+
+                    // Try a "ConnectionStrings" object
+                    if (string.IsNullOrWhiteSpace(connString) && jo?["ConnectionStrings"] is Newtonsoft.Json.Linq.JObject csObj)
+                    {
+                        // prefer "DefaultConnection" if present
+                        connString = csObj.Value<string>("DefaultConnection");
+
+                        // otherwise take the first property value
+                        if (string.IsNullOrWhiteSpace(connString))
+                        {
+                            var firstProp = csObj.Properties().FirstOrDefault();
+                            if (firstProp != null)
+                                connString = firstProp.Value?.ToString();
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(connString))
+                    {
+                        Console.WriteLine($"dbconfig.json found at '{configPath}' but no connection string was located. Falling back to hard-coded string.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Error reading or parsing dbconfig.json: " + ex.Message);
+                    connString = null;
+                }
+            }
+            else
+            {
+                Console.WriteLine("dbconfig.json not found. Falling back to hard-coded connection string.");
+            }
+
+            // Hard-coded fallback (preserve previous value)
+            if (string.IsNullOrWhiteSpace(connString))
+            {
+                connString = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=MonitoringApp;User ID=johnny;Password=test";
+            }
+
             conn.ConnectionString = connString;
             cmd.Connection = conn;
             try
             {
-                Console.WriteLine("Openning Connection ...");
+                Console.WriteLine("Opening Connection ...");
                 conn.Open();
                 Console.WriteLine("Connection successful!");
             }

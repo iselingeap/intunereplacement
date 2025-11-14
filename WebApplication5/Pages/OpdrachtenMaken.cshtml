@@ -21,12 +21,11 @@
 
     dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
 
-	var ructaskValue = Request.Method == "POST" ? Request.Form["RUCTASK"].ToString() : "";
+	var ructaskValue = Request.Method == "POST" ? Request.Form["RUCTASKID"].ToString() : "";
+	var ructaskNameValue = Request.Method == "POST" ? Request.Form["RUCTASKNAME"].ToString() : "";
     var sendCommandValue = Request.Method == "POST" ? Request.Form["requestType"].ToString() : "";
     var userActionValue = Request.Method == "POST" ? Request.Form["userAction"].ToString() : "";
 	var selectedLaptops = Request.Method == "POST" ? Request.Form["Laptops[]"].ToList() : new List<string>();
-
-	ViewData["run"] = ructaskValue;
 
     // If the form posts an OriginalTaskId (hidden input), propagate it into editOriginalTaskId
     var formOriginalTaskId = Request.Method == "POST" ? (Request.Form["OriginalTaskId"].ToString() ?? "") : "";
@@ -55,7 +54,7 @@
                 }
                 else
                 {
-                    dBItemManagement.SendScriptToTaskSystem(taskId, selectedLaptops);
+                    dBItemManagement.SendScriptToTaskSystem(taskId, selectedLaptops, ructaskNameValue);
                     ViewData["SuccessMessage"] = "Taak gestart.";
                 }
             }
@@ -176,7 +175,7 @@
                 {
                     dBItemManagement.DeleteUserCreatedTask(originalTaskId);
                     dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
-                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops, commandName);
                     userCreatedTasks.Clear();
                     dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
                     ViewData["SuccessMessage"] = "Taak opgeslagen en uitgevoerd.";
@@ -217,14 +216,14 @@
             // Not editing, regular save/run logic applies
             if (sendCommandValue == "run")
             {
-                dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops, commandName);
                 ViewData["SuccessMessage"] = "Taak uitgevoerd.";
             }
             else if (sendCommandValue == "save")
             {
                 if (nameExists)
                 {
-                    ViewData["ErrorMessage"] = "A task with that name already exists.";
+                    ViewData["ErrorMessage"] = "Een taak met deze naam bestaat al. Wijzig alstublieft de naam.";
                 }
                 else
                 {
@@ -240,12 +239,12 @@
                 {
                     // If name exists, do not save again but still run the command
                     ViewData["ErrorMessage"] = "A task with that name already exists. Running without saving.";
-                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops, commandName);
                 }
                 else
                 {
                     dBItemManagement.SaveUserCreatedTask(commandName, prefixedCommandInput);
-                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops);
+                    dBItemManagement.ManuallTaskCreationTask(prefixedCommandInput, selectedLaptops, commandName);
                     userCreatedTasks.Clear();
                     dBItemManagement.getAllUserCreatedTasks(gadColumnsTasks, userCreatedTasks);
                     ViewData["SuccessMessage"] = "Taak opgeslagen en uitgevoerd.";
@@ -338,10 +337,13 @@
         </div>
         <input type="hidden" name="OriginalTaskId" value="@editOriginalTaskId" />
         <input type="hidden" name="OriginalTaskName" value="@editOriginalTaskName" />
-        <button type="submit" class="btn btn-primary" value="run" name="requestType" >Run</button>
+        <button type="submit" class="btn btn-primary requires-laptops" value="run" name="requestType" data-requires-laptops="true" >Run</button>
         <button type="submit" class="btn btn-primary" value="save" name="requestType">Save</button>
-        <button type="submit" class="btn btn-primary" value="sar" name="requestType">Save and Run</button>
+        <button type="submit" class="btn btn-primary requires-laptops" value="sar" name="requestType" data-requires-laptops="true">Save and Run</button>
     </form>
+
+        <button class="btn btn-secondary mt-3" onclick="location.href='/TaskList'">Taken list</button>
+
 
         <hr>
         <form method="post">
@@ -390,12 +392,14 @@
                 @foreach (var task in userCreatedTasks)
                 {
                     var taskId = task.ContainsKey("id") ? task["id"]?.ToString() ?? "" : "";
+					var taskname = task.ContainsKey("name") ? task["name"]?.ToString() ?? "" : "";
                     <tr>
                         <td>@(task.ContainsKey("name") ? task["name"] : "")</td>
                         <td>
                             <form method="post" onsubmit="return confirmDelete(event, this);">
-                                <input type="hidden" name="RUCTASK" value="@taskId" />
-                                <button type="submit" class="btn btn-primary" name="userAction" value="run">Run</button>
+                                <input type="hidden" name="RUCTASKID" value="@taskId" />
+                                <input type="hidden" name="RUCTASKNAME" value="@taskname" />
+                                <button type="submit" class="btn btn-primary requires-laptops" name="userAction" value="run" data-requires-laptops="true">Run</button>
                                 <button type="submit" class="btn btn-danger" name="userAction" value="delete">Delete</button>
                                 <button type="submit" class="btn btn-secondary" name="userAction" value="edit">Edit</button>
                             </form>
@@ -418,21 +422,7 @@
     
 </div>
     <script>
-        /*
-        PSEUDOCODE PLAN (kept here as a comment):
-        - The server reads selected laptops from Request.Form["Laptops[]"].
-        - Ensure every form submission on the page includes the currently selected laptops.
-        - Keep an in-memory client-side list 'selectedLaptopIds' (JSON strings with id and name).
-        - When selection changes, update UI and keep hidden inputs in a container (hiddenLaptopsContainer) for the laptops-form.
-        - On any form submit (document-level 'submit' event), remove any existing 'Laptops[]' hidden inputs in the submitting form,
-          then append hidden inputs for each selected laptop id so the server receives them as Request.Form["Laptops[]"].
-        - This approach covers:
-            * the main command form (run/save/sar),
-            * the per-task action forms (run/delete/edit),
-            * and any other forms that might be added later.
-        - Keep the rest of the selection UX unchanged.
-        */
-
+        
         // Confirmation helper for delete buttons
         function confirmDelete(e, form) {
             var submitter = e.submitter || document.activeElement;
@@ -445,12 +435,13 @@
         (function() {
             // Keep selected ids as strings (JSON)
             var selectedLaptopIds = [];
+            var lastSubmitter = null;
 
             function updateSelectedUI() {
                 var selectedList = document.getElementById('selectedList');
                 var hiddenContainer = document.getElementById('hiddenLaptopsContainer');
 
-                // Clear hidden inputs in the visible laptops form container (keeps that form usable)
+                // Clear hidden inputs in the visible laptops form container 
                 hiddenContainer.innerHTML = '';
 
                 if (selectedLaptopIds.length === 0) {
@@ -572,10 +563,43 @@
                     });
                 }
 
+                // Track clicks on submit buttons to know which button was used as fallback
+                var allSubmitButtons = document.querySelectorAll('button[type="submit"], input[type="submit"]');
+                allSubmitButtons.forEach(function(b) {
+                    b.addEventListener('click', function(ev) {
+                        lastSubmitter = ev.target;
+                    });
+                });
+
                 // Ensure any form submitted on the page includes the selected laptops
                 document.addEventListener('submit', function(e) {
                     try {
                         var form = e.target;
+
+                        // Determine submitter: prefer e.submitter, fallback to lastSubmitter, fallback to first requires-laptops button in form
+                        var submitter = e.submitter || lastSubmitter || (function() {
+                            try {
+                                return form.querySelector('button.requires-laptops, input.requires-laptops');
+                            } catch (ex) { return null; }
+                        })();
+
+                        var requiresLaptops = false;
+                        if (submitter) {
+                            // dataset may not exist on older IE etc, check class as well
+                            requiresLaptops = (submitter.dataset && submitter.dataset.requiresLaptops === 'true') || submitter.classList.contains('requires-laptops');
+                        }
+
+                        if (requiresLaptops && selectedLaptopIds.length === 0) {
+                            // Block submit and notify user
+                            e.preventDefault();
+                            // Provide a friendly message and focus the laptop search so user can select
+                            alert('Selecteer minimaal één laptop om de taak uit te voeren.');
+                            var searchEl = document.getElementById('laptopSearch');
+                            if (searchEl) searchEl.focus();
+                            return false;
+                        }
+
+                        // Append selected laptops to the submitting form (existing behavior)
                         appendSelectedToForm(form);
                         // allow submit to continue
                     } catch (err) {

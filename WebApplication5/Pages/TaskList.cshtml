@@ -1,0 +1,61 @@
+﻿@page
+@model FrontEnd.Pages.TaskListModel
+@using WebApplication5.Services
+@{
+
+
+	DBItemManagement dBItemManagement = new DBItemManagement();
+
+	var tasksList = dBItemManagement.GetAllTasks();
+	
+
+
+	ViewData["Title"] = "Task List";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (tasksList != null && tasksList.Count > 0)
+{
+	<table class="table table-striped">
+		<thead>
+			<tr>
+				<th>Task ID</th>
+				<th>Task Name</th>
+				<th>Status</th>
+				<th>Created At</th>
+				<th>Details</th>
+			</tr>
+		</thead>
+		<tbody>
+			@for (int i = 0; i < tasksList.Count; i++)
+			{
+				var task = tasksList[i];
+				var detailId = $"details-{i}";
+				<tr>
+					<td>@(task.ContainsKey("id") ? task["id"] : "N/A")</td>
+					<td>@(task.ContainsKey("name") ? task["name"] : "N/A")</td>
+					<td>@(dBItemManagement.statusConvert(task.ContainsKey("status") ? task["status"].ToString() : null))</td>
+					<td>@(task.ContainsKey("creationDate") ? task["creationDate"] : "N/A")</td>
+					<td>
+						<button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#@detailId" aria-expanded="false" aria-controls="@detailId">
+							Show Details
+						</button>
+					</td>
+				</tr>
+				<tr class="collapse-row">
+					<td colspan="5" style="padding-top:0; padding-bottom:0;">
+						<div id="@detailId" class="collapse p-3 border rounded bg-light">
+							<div><strong>Description:</strong> @(task.ContainsKey("task") ? task["task"] : "N/A")</div>
+							<div class="mt-2"><strong>Result:</strong> @(task.ContainsKey("ClientResponse") ? task["ClientResponse"] : "N/A")</div>
+						</div>
+					</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+else
+{
+	<p>No tasks found.</p>
+}

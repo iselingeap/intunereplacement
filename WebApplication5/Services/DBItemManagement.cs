@@ -1,12 +1,46 @@
 ﻿using Microsoft.Data.SqlClient;
+using Microsoft.Identity.Client.Extensions.Msal;
 using Microsoft.VisualBasic;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.Configuration;
+using System;
 
 namespace WebApplication5.Services
 {
     public class DBItemManagement
     {
-        string connectionString = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=MonitoringApp;User ID=johnny;Password=test";
+        string connectionString = "";
+
+        // Optional DI configuration holder (if injected)
+        private readonly IConfiguration? _configuration;
+
+        // Constructor used when IConfiguration is available via DI
+        public DBItemManagement(IConfiguration configuration)
+        {
+            _configuration = configuration;
+            connectionString = _configuration.GetConnectionString("MonitoringApp") ?? "";
+        }
+
+        // Parameterless constructor fallback:
+        // Loads appsettings.json from the application's base directory if present.
+        public DBItemManagement()
+        {
+            try
+            {
+                var builder = new ConfigurationBuilder()
+                    .SetBasePath(AppContext.BaseDirectory)
+                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+
+                var config = builder.Build();
+                connectionString = config.GetConnectionString("MonitoringApp") ?? "";
+                _configuration = config;
+            }
+            catch
+            {
+                // If configuration cannot be built, leave connectionString as empty
+                connectionString = "";
+            }
+        }
 
         public string GetConnectionString()
         {
@@ -51,7 +85,6 @@ namespace WebApplication5.Services
             }
         }
 
-
         public List<Dictionary<string, object>> GetAllLaptopData(List<string> gadColumns, [Optional] string sorter )
         {
             var getAllData = new List<Dictionary<string, object>>();
@@ -78,7 +111,6 @@ namespace WebApplication5.Services
             }
             return getAllData;
         }
-
 
         public List<Dictionary <string, object>> GetAllAppData( List<string> gadColumns, string sorter)
         {
@@ -280,14 +312,15 @@ namespace WebApplication5.Services
             }
         }
 
-        public void ManuallTaskCreationTask(string Task, List<string> laptopsIds)
+        public void ManuallTaskCreationTask(string Task, List<string> laptopsIds, string taskname)
         {
             using (var connection = new SqlConnection(connectionString))
             {
                 connection.Open();
-                using (var command = new SqlCommand("INSERT INTO Tasks (creationDate, task, isPSCommand, status, laptop_id) VALUES (GETDATE(), @Task, 1, 1, @LaptopId)", connection))
+                using (var command = new SqlCommand("INSERT INTO Tasks (name, creationDate, task, isPSCommand, status, laptop_id) VALUES (@name,GETDATE(), @Task, 1, 1, @LaptopId)", connection))
                 {
                     command.Parameters.AddWithValue("@Task", Task);
+                    command.Parameters.AddWithValue("@Name", taskname);
                     foreach (var laptopId in laptopsIds)
                     {
                         command.Parameters.AddWithValue("@LaptopId", laptopId);
@@ -323,7 +356,6 @@ namespace WebApplication5.Services
             }
         }
 
-
         public void DeleteUserCreatedTask(int taskId)
         {
             using (var connection = new SqlConnection(connectionString))
@@ -337,17 +369,18 @@ namespace WebApplication5.Services
             }
         }
 
-        public void SendScriptToTaskSystem(int taskId, List<string> laptops_ids)
+        public void SendScriptToTaskSystem(int taskId, List<string> laptops_ids, string taskname)
         {
             using (var connection = new SqlConnection(connectionString))
             {
                 connection.Open();
                 foreach (var laptopId in laptops_ids)
                 {
-                    using (var command = new SqlCommand("INSERT INTO Tasks (creationDate, task, isPSCommand, status, laptop_id) SELECT GETDATE(), powerShellScript, 1, 1, @LaptopId FROM UserMadeTasks WHERE id = @TaskId", connection))
+                    using (var command = new SqlCommand("INSERT INTO Tasks (name,creationDate, task, isPSCommand, status, laptop_id) SELECT @Name, GETDATE(), powerShellScript, 1, 1, @LaptopId FROM UserMadeTasks WHERE id = @TaskId", connection))
                     {
                         command.Parameters.AddWithValue("@TaskId", taskId);
                         command.Parameters.AddWithValue("@LaptopId", laptopId);
+                        command.Parameters.AddWithValue("@Name", taskname);
                         command.ExecuteNonQuery();
                     }
                 }
@@ -381,5 +414,48 @@ namespace WebApplication5.Services
                 }
             }
         }
+
+        public List<Dictionary<string, object>> GetAllTasks()
+        {
+            var results = new List<Dictionary<string, object>>();
+            var cs = GetConnectionStringInternal();
+            if (string.IsNullOrEmpty(cs)) return results;
+            using (var conn = new SqlConnection(cs))
+            using (var cmd = conn.CreateCommand())
+            {
+               cmd .CommandText = "SELECT id, name ,creationDate, task, isPSCommand, status, laptop_id ,ClientResponse FROM Tasks";
+                conn.Open();
+                using (var rdr = cmd.ExecuteReader())
+                {
+                    while (rdr.Read())
+                    {
+                        var row = new Dictionary<string, object>();
+                        row["id"] = rdr["id"];
+                        row["name"] = rdr["name"] == DBNull.Value ? "" : rdr["name"].ToString() ?? "";
+                        row["creationDate"] = rdr["creationDate"];
+                        row["task"] = rdr["task"] == DBNull.Value ? "" : rdr["task"].ToString() ?? "";
+                        row["isPSCommand"] = rdr["isPSCommand"];
+                        row["status"] = rdr["status"];
+                        row["laptop_id"] = rdr["laptop_id"] == DBNull.Value ? "" : rdr["laptop_id"].ToString() ?? "";
+                        row["ClientResponse"] = rdr["ClientResponse"] == DBNull.Value ? "" : rdr["ClientResponse"].ToString() ?? "";
+                        results.Add(row);
+                    }
+                }
+            }
+            return results;
+        }
+
+        // this sitting here because blazer won't stop yelling about it in the razor pages
+        public string statusConvert(string status)
+        {
+            return status switch
+            {
+                "0" => "Pending",
+                "1" => "In Progress",
+                "2" => "Completed",
+                _ => "Unknown"
+            };
+        }
+
     }
 }
