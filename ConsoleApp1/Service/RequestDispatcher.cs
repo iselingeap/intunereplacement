@@ -1,10 +1,6 @@
-using System;
-using System.IO;
+using ConsoleApp1.Entiteiten;
 using System.Net;
 using System.Text;
-using System.Threading.Tasks;
-using ConsoleApp1.Entiteiten;
-using ConsoleApp1.Service;
 
 namespace ConsoleApp1.Service
 {
@@ -100,7 +96,7 @@ namespace ConsoleApp1.Service
                 {
                     var body = await ReadRequestBodyAsync(request);
                     var json = dm.DecryptString(body, DefaultKey);
-                    
+
                     Console.WriteLine("Received TasksReturnFromClient:" + json);
                     dm.UpdatetaskBasedOnResponse(json);
                     await WriteResponseAsync(context, (int)HttpStatusCode.OK, Array.Empty<byte>());
@@ -161,7 +157,7 @@ namespace ConsoleApp1.Service
                     var body = await ReadRequestBodyAsync(request);
                     var json = dm.DecryptString(body, key);
                     Console.WriteLine("[v2] Received TasksReturnFromClient:" + json);
-                        
+
                     await WriteResponseAsync(context, (int)HttpStatusCode.OK, Array.Empty<byte>());
                 }
                 else

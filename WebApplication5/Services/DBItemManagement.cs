@@ -1,9 +1,5 @@
 ﻿using Microsoft.Data.SqlClient;
-using Microsoft.Identity.Client.Extensions.Msal;
-using Microsoft.VisualBasic;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Configuration;
-using System;
 
 namespace WebApplication5.Services
 {
@@ -85,7 +81,7 @@ namespace WebApplication5.Services
             }
         }
 
-        public List<Dictionary<string, object>> GetAllLaptopData(List<string> gadColumns, [Optional] string sorter )
+        public List<Dictionary<string, object>> GetAllLaptopData(List<string> gadColumns, [Optional] string sorter)
         {
             var getAllData = new List<Dictionary<string, object>>();
             using (var connection = new SqlConnection(connectionString))
@@ -112,7 +108,7 @@ namespace WebApplication5.Services
             return getAllData;
         }
 
-        public List<Dictionary <string, object>> GetAllAppData( List<string> gadColumns, string sorter)
+        public List<Dictionary<string, object>> GetAllAppData(List<string> gadColumns, string sorter)
         {
             var getAllData = new List<Dictionary<string, object>>();
             using (var connection = new SqlConnection(connectionString))
@@ -139,7 +135,7 @@ namespace WebApplication5.Services
             return getAllData;
         }
 
-        public List<Dictionary<string, object>> GetAllLaptopsUsingApp( List<string> gadColumns, string AppId, string Version)
+        public List<Dictionary<string, object>> GetAllLaptopsUsingApp(List<string> gadColumns, string AppId, string Version)
         {
             var getAllData = new List<Dictionary<string, object>>();
             using (var connection = new SqlConnection(connectionString))
@@ -171,7 +167,7 @@ namespace WebApplication5.Services
 
         }
 
-        public List<Dictionary<string, object>> GetAllAppsOnLaptop( List<string> gadColumns, string LaptopId,string sorter = "")
+        public List<Dictionary<string, object>> GetAllAppsOnLaptop(List<string> gadColumns, string LaptopId, string sorter = "")
         {
             var getAllData = new List<Dictionary<string, object>>();
             using (var connection = new SqlConnection(connectionString))
@@ -201,7 +197,7 @@ namespace WebApplication5.Services
             return getAllData;
         }
 
-        public List<Dictionary<string, object>> GetLaptops( string query)
+        public List<Dictionary<string, object>> GetLaptops(string query)
         {
             var Data = new List<Dictionary<string, object>>();
             using (var connection = new SqlConnection(connectionString))
@@ -221,7 +217,7 @@ namespace WebApplication5.Services
                             }
                             Data.Add(row);
                         } while (reader.Read());
-                    } 
+                    }
                 }
             }
             return Data;
@@ -423,7 +419,7 @@ namespace WebApplication5.Services
             using (var conn = new SqlConnection(cs))
             using (var cmd = conn.CreateCommand())
             {
-               cmd .CommandText = "SELECT id, name ,creationDate, task, isPSCommand, status, laptop_id ,ClientResponse FROM Tasks";
+                cmd.CommandText = "SELECT id, name ,creationDate, task, isPSCommand, status, laptop_id ,ClientResponse FROM Tasks";
                 conn.Open();
                 using (var rdr = cmd.ExecuteReader())
                 {

@@ -4,14 +4,11 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
-using System.Web.Http;
-using System.Web.Http.SelfHost;
 
 namespace ConsoleApp1.Service
 {
 
-    public class Datamanagement 
+    public class Datamanagement
     {
         SqlConnection conn = new SqlConnection();
         SqlCommand cmd = new SqlCommand();
@@ -95,7 +92,7 @@ namespace ConsoleApp1.Service
 
         public DevicesData ConvertJsonToSql(string json)
         {
-    
+
             DevicesData data = JsonConvert.DeserializeObject<DevicesData>(json);
             return data;
         }
@@ -305,7 +302,7 @@ namespace ConsoleApp1.Service
                     }
                     catch (Exception txEx)
                     {
-                        try { transaction.Rollback(); } catch {  }
+                        try { transaction.Rollback(); } catch { }
                         Console.WriteLine("Error comparing pinned apps and creating tasks: " + txEx.Message);
                     }
                     finally
@@ -566,7 +563,7 @@ namespace ConsoleApp1.Service
             cmd.Parameters.Clear();
             cmd.Parameters.AddWithValue("@hwid", hwid);
             object laptopIdObj = cmd.ExecuteScalar();
-            string laptopGuid = laptopIdObj != null && laptopIdObj != DBNull.Value ? Convert.ToString(laptopIdObj): "";
+            string laptopGuid = laptopIdObj != null && laptopIdObj != DBNull.Value ? Convert.ToString(laptopIdObj) : "";
             if (laptopGuid != "")
             {
                 return laptopGuid;
@@ -585,7 +582,7 @@ namespace ConsoleApp1.Service
             cmd.Parameters.AddWithValue("@guid", userId);
             object result = cmd.ExecuteScalar();
             DateTime lastUpdateTime = Convert.ToDateTime(result);
-            if (DateTime.Now > lastUpdateTime.AddMinutes(20 + rnd.Next(1,6)))
+            if (DateTime.Now > lastUpdateTime.AddMinutes(20 + rnd.Next(1, 6)))
             {
                 return "trueface";
             }
@@ -819,7 +816,7 @@ namespace ConsoleApp1.Service
 
     }
 
-   
+
 }
 
 

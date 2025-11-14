@@ -1,7 +1,5 @@
-﻿using ConsoleApp1.Entiteiten;
-using ConsoleApp1.Service;
+﻿using ConsoleApp1.Service;
 using System.Net;
-using System.Text;
 
 
 internal class Program
