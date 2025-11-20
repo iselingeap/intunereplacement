@@ -1,5 +1,8 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 
 namespace WebApplication5.Services
 {
@@ -17,8 +20,6 @@ namespace WebApplication5.Services
             connectionString = _configuration.GetConnectionString("MonitoringApp") ?? "";
         }
 
-        // Parameterless constructor fallback:
-        // Loads appsettings.json from the application's base directory if present.
         public DBItemManagement()
         {
             try

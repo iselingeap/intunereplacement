@@ -570,7 +570,7 @@ namespace ConsoleApp1.Service
             }
             else
             {
-                throw new Exception("No laptop found with the provided HWID.");
+                return "No laptop found with the provided HWID.";
             }
         }
 
@@ -636,16 +636,37 @@ namespace ConsoleApp1.Service
             }
         }
 
+        // Pseudocode / Plan (detailed):
+        // 1. Start DB transaction and set cmd.Transaction.
+        // 2. Find existing laptop by HWID (get id). If found, retrieve its current GUID.
+        // 3. If laptop exists (update path):
+        //    a. If incoming data.guid is provided and different from existing GUID:
+        //         - Check if that GUID already exists on another laptop (query by GUID).
+        //         - If GUID exists for another id -> treat as conflict: keep existing GUID and log a message.
+        //         - If GUID does not exist or belongs to this laptop -> accept incoming GUID and update it.
+        //    b. If incoming data.guid is empty -> keep existing GUID.
+        //    c. Perform UPDATE of Laptops, including GUID parameter (which will be either existing or accepted incoming).
+        // 4. If laptop does not exist (insert path):
+        //    a. Determine GUID to insert:
+        //         - If data.guid provided: check if it exists in DB.
+        //             - If it exists -> generate a new GUID (Guid.NewGuid()) and loop until unique.
+        //             - If it does not exist -> use provided guid.
+        //         - If no data.guid provided -> generate a new GUID and loop until unique.
+        //    b. Perform INSERT using the chosen unique GUID and capture inserted id.
+        // 5. Proceed to insert/update Apps and Winlogs as before using resolved laptopId.
+        // 6. Commit transaction; on exception rollback and log.
+        // Notes: This ensures that no two records will be assigned the same GUID at the application level.
+        //       It does not add a DB-level unique constraint (recommended), but prevents duplicates at write time.
+
         public void InsertOrUpdateDatabase(DevicesData data)
         {
             using (var transaction = conn.BeginTransaction())
             {
-
                 try
                 {
                     cmd.Transaction = transaction;
 
-                    // Check if laptop exists
+                    // Check if laptop exists by HWID
                     cmd.CommandText = "SELECT id FROM Laptops WHERE HWID = @hwid";
                     cmd.Parameters.Clear();
                     cmd.Parameters.AddWithValue("@hwid", data.hwid ?? (object)DBNull.Value);
@@ -654,31 +675,111 @@ namespace ConsoleApp1.Service
 
                     var sqlMinDate = new DateTime(1753, 1, 1);
 
+                    string resolvedGuid = null;
+
                     if (laptopId > 0)
                     {
-                        // Update laptop
+                        // Existing laptop: retrieve current GUID
+                        cmd.CommandText = "SELECT GUID FROM Laptops WHERE id = @id";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@id", laptopId);
+                        object existingGuidObj = cmd.ExecuteScalar();
+                        string existingGuid = existingGuidObj != null && existingGuidObj != DBNull.Value ? Convert.ToString(existingGuidObj) : null;
+
+                        // Decide which GUID to use
+                        if (!string.IsNullOrWhiteSpace(data.guid) && !string.Equals(data.guid, existingGuid, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Check if incoming GUID is already used by another laptop
+                            cmd.CommandText = "SELECT id FROM Laptops WHERE GUID = @guid";
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("@guid", data.guid);
+                            object otherIdObj = cmd.ExecuteScalar();
+                            if (otherIdObj != null && otherIdObj != DBNull.Value && Convert.ToInt32(otherIdObj) != laptopId)
+                            {
+                                // Conflict: incoming GUID belongs to another device -> keep existing GUID
+                                Console.WriteLine("Incoming GUID already assigned to another device. Keeping existing GUID for this laptop.");
+                                resolvedGuid = existingGuid;
+                            }
+                            else
+                            {
+                                // Safe to adopt incoming GUID
+                                resolvedGuid = data.guid;
+                            }
+                        }
+                        else
+                        {
+                            // Keep existing GUID (or null if none)
+                            resolvedGuid = existingGuid;
+                        }
+
+                        // Update laptop record (ensure GUID column is updated to resolvedGuid)
                         cmd.CommandText = @"UPDATE Laptops 
                     SET name = @name,
-                    OS = @os,
-                    OSVer = @osVer,
-                    lastUpdate = @lastUpdate,
-                    MAC = @Mac,
-                    HWID = @hwid
+                        OS = @os,
+                        OSVer = @osVer,
+                        lastUpdate = @lastUpdate,
+                        MAC = @Mac,
+                        HWID = @hwid,
+                        GUID = @guid
                     WHERE HWID = @hwid";
                         cmd.Parameters.Clear();
-                        cmd.Parameters.AddWithValue("@name", data.Name);
-                        cmd.Parameters.AddWithValue("@os", data.Os);
-                        cmd.Parameters.AddWithValue("@osVer", data.OsVer);
+                        cmd.Parameters.AddWithValue("@name", data.Name ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@os", data.Os ?? (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@osVer", data.OsVer ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@lastUpdate",
                             data.LastUpdate < sqlMinDate ? (object)DBNull.Value : data.LastUpdate);
                         cmd.Parameters.AddWithValue("@Mac", data.mac);
                         cmd.Parameters.AddWithValue("@hwid", data.hwid);
+                        cmd.Parameters.AddWithValue("@guid", string.IsNullOrWhiteSpace(resolvedGuid) ? (object)DBNull.Value : resolvedGuid);
                         cmd.ExecuteNonQuery();
                         Console.WriteLine("Existing record updated.");
                     }
                     else
                     {
-                        // Insert laptop
+                        // New laptop: determine a unique GUID to insert
+                        string guidToInsert = null;
+                        if (!string.IsNullOrWhiteSpace(data.guid))
+                        {
+                            // If provided, check if it's already used
+                            cmd.CommandText = "SELECT id FROM Laptops WHERE GUID = @guid";
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("@guid", data.guid);
+                            object existingObj = cmd.ExecuteScalar();
+                            if (existingObj != null && existingObj != DBNull.Value)
+                            {
+                                // Provided GUID already exists; generate a new unique GUID
+                                Console.WriteLine("Provided GUID already exists in database. Generating a new unique GUID for the new laptop.");
+                                do
+                                {
+                                    guidToInsert = Guid.NewGuid().ToString();
+                                    cmd.CommandText = "SELECT COUNT(1) FROM Laptops WHERE GUID = @newguid";
+                                    cmd.Parameters.Clear();
+                                    cmd.Parameters.AddWithValue("@newguid", guidToInsert);
+                                    int cnt = Convert.ToInt32(cmd.ExecuteScalar());
+                                    if (cnt == 0) break;
+                                } while (true);
+                            }
+                            else
+                            {
+                                // Provided GUID is unique -> use it
+                                guidToInsert = data.guid;
+                            }
+                        }
+                        else
+                        {
+                            // No GUID provided -> generate a unique one
+                            do
+                            {
+                                guidToInsert = Guid.NewGuid().ToString();
+                                cmd.CommandText = "SELECT COUNT(1) FROM Laptops WHERE GUID = @newguid";
+                                cmd.Parameters.Clear();
+                                cmd.Parameters.AddWithValue("@newguid", guidToInsert);
+                                int cnt = Convert.ToInt32(cmd.ExecuteScalar());
+                                if (cnt == 0) break;
+                            } while (true);
+                        }
+
+                        // Insert laptop with resolved unique GUID
                         cmd.CommandText = @"INSERT INTO Laptops (name, OS, OSVer, lastUpdate, MAC, HWID, GUID) 
                     OUTPUT INSERTED.id
                     VALUES (@name, @os, @osVer, @lastUpdate, @Mac, @hwid, @guid)";
@@ -690,7 +791,7 @@ namespace ConsoleApp1.Service
                             data.LastUpdate < sqlMinDate ? (object)DBNull.Value : data.LastUpdate);
                         cmd.Parameters.AddWithValue("@Mac", data.mac ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@hwid", data.hwid ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@guid", Guid.NewGuid().ToString());
+                        cmd.Parameters.AddWithValue("@guid", guidToInsert ?? (object)DBNull.Value);
                         laptopId = Convert.ToInt32(cmd.ExecuteScalar());
                         Console.WriteLine("New record inserted.");
                     }
@@ -700,10 +801,10 @@ namespace ConsoleApp1.Service
                     {
                         // Check if app exists for this laptop using INNER JOIN
                         cmd.CommandText = @"
-                        SELECT COUNT(*) 
-                        FROM Apps 
-                        INNER JOIN Laptops ON Apps.laptop_id = Laptops.id
-                        WHERE Apps.laptop_id = @LaptopId AND Apps.app_id = @AppId";
+                    SELECT COUNT(*) 
+                    FROM Apps 
+                    INNER JOIN Laptops ON Apps.laptop_id = Laptops.id
+                    WHERE Apps.laptop_id = @LaptopId AND Apps.app_id = @AppId";
                         cmd.Parameters.Clear();
                         cmd.Parameters.AddWithValue("@LaptopId", laptopId);
                         cmd.Parameters.AddWithValue("@AppId", app.Id ?? (object)DBNull.Value);
@@ -764,9 +865,11 @@ namespace ConsoleApp1.Service
                     transaction.Rollback();
                     Console.WriteLine("Database error: " + ex.Message);
                 }
-
+                finally
+                {
+                    cmd.Transaction = null;
+                }
             }
-
         }
 
 

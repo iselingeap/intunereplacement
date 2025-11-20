@@ -86,10 +86,20 @@ namespace ConsoleApp1.Service
                 {
                     var hwidEnc = path.Substring("/application/WhoIsClient?hwid=".Length);
                     var hwid = dm.DecryptString(hwidEnc, DefaultKey);
+                    Console.WriteLine(hwid);
                     string userGuid = dm.GetUserGUIDbyHWID(hwid);
-                    var responseString = dm.EncryptString(userGuid, DefaultKey);
-                    var buffer = Encoding.UTF8.GetBytes(responseString);
-                    await WriteResponseAsync(context, (int)HttpStatusCode.OK, buffer);
+                    Console.WriteLine(userGuid);
+                    // If GetUserGUIDbyHWID doesn't return a valid GUID, respond with 300 Ambiguous
+                    if (Guid.TryParse(userGuid, out _))
+                    {
+                        var responseString = dm.EncryptString(userGuid, DefaultKey);
+                        var buffer = Encoding.UTF8.GetBytes(responseString);
+                        await WriteResponseAsync(context, (int)HttpStatusCode.OK, buffer);
+                    }
+                    else
+                    {
+                        await WriteResponseAsync(context, (int)HttpStatusCode.Ambiguous, Array.Empty<byte>());
+                    }
                 }
                 else if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
                          path.Equals("/application/TasksReturnFromClient", StringComparison.OrdinalIgnoreCase))
@@ -147,9 +157,18 @@ namespace ConsoleApp1.Service
                     var hwidEnc = path.Substring("/application/WhoIsClient?hwid=".Length);
                     var hwid = dm.DecryptString(hwidEnc, key);
                     string userGuid = dm.GetUserGUIDbyHWID(hwid);
-                    var responseString = dm.EncryptString(userGuid, key);
-                    var buffer = Encoding.UTF8.GetBytes(responseString);
-                    await WriteResponseAsync(context, (int)HttpStatusCode.OK, buffer);
+
+                    // If GetUserGUIDbyHWID doesn't return a valid GUID, respond with 300 Ambiguous
+                    if (Guid.TryParse(userGuid, out _))
+                    {
+                        var responseString = dm.EncryptString(userGuid, key);
+                        var buffer = Encoding.UTF8.GetBytes(responseString);
+                        await WriteResponseAsync(context, (int)HttpStatusCode.OK, buffer);
+                    }
+                    else
+                    {
+                        await WriteResponseAsync(context, (int)HttpStatusCode.Ambiguous, Array.Empty<byte>());
+                    }
                 }
                 else if (request.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
                          path.Equals("/application/TasksReturnFromClient", StringComparison.OrdinalIgnoreCase))
