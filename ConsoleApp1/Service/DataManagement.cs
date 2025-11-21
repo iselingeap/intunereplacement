@@ -286,8 +286,9 @@ namespace ConsoleApp1.Service
                             }
 
                             // Insert task
-                            cmd.CommandText = @"INSERT INTO Tasks (laptop_id, task, isPSCommand, status, creationDate) VALUES (@LaptopId, @Task, @IsPSCommand, @Status, @CreationDate)";
+                            cmd.CommandText = @"INSERT INTO Tasks (name ,laptop_id, task, isPSCommand, status, creationDate) VALUES (@Name,@LaptopId, @Task, @IsPSCommand, @Status, @CreationDate)";
                             cmd.Parameters.Clear();
+                            cmd.Parameters.AddWithValue("Pin Status update", $"Winget {action} for {AppId}");
                             cmd.Parameters.AddWithValue("@LaptopId", laptopId);
                             cmd.Parameters.AddWithValue("@Task", wingetCmd);
                             cmd.Parameters.AddWithValue("@IsPSCommand", 1);
@@ -636,27 +637,7 @@ namespace ConsoleApp1.Service
             }
         }
 
-        // Pseudocode / Plan (detailed):
-        // 1. Start DB transaction and set cmd.Transaction.
-        // 2. Find existing laptop by HWID (get id). If found, retrieve its current GUID.
-        // 3. If laptop exists (update path):
-        //    a. If incoming data.guid is provided and different from existing GUID:
-        //         - Check if that GUID already exists on another laptop (query by GUID).
-        //         - If GUID exists for another id -> treat as conflict: keep existing GUID and log a message.
-        //         - If GUID does not exist or belongs to this laptop -> accept incoming GUID and update it.
-        //    b. If incoming data.guid is empty -> keep existing GUID.
-        //    c. Perform UPDATE of Laptops, including GUID parameter (which will be either existing or accepted incoming).
-        // 4. If laptop does not exist (insert path):
-        //    a. Determine GUID to insert:
-        //         - If data.guid provided: check if it exists in DB.
-        //             - If it exists -> generate a new GUID (Guid.NewGuid()) and loop until unique.
-        //             - If it does not exist -> use provided guid.
-        //         - If no data.guid provided -> generate a new GUID and loop until unique.
-        //    b. Perform INSERT using the chosen unique GUID and capture inserted id.
-        // 5. Proceed to insert/update Apps and Winlogs as before using resolved laptopId.
-        // 6. Commit transaction; on exception rollback and log.
-        // Notes: This ensures that no two records will be assigned the same GUID at the application level.
-        //       It does not add a DB-level unique constraint (recommended), but prevents duplicates at write time.
+        
 
         public void InsertOrUpdateDatabase(DevicesData data)
         {
