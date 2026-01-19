@@ -67,6 +67,7 @@ namespace ConsoleApp1.Service
                     var id = dm.DecryptString(idEnc, DefaultKey);
                     Console.WriteLine(id);
                     var updates = dm.GetUserTasks(id);
+                    dm.UpdateUserLastCheckIn(id);
                     Console.WriteLine(updates);
                     var responseEncrypted = dm.EncryptString(updates, DefaultKey);
                     var buffer = Encoding.UTF8.GetBytes(responseEncrypted);
@@ -138,6 +139,7 @@ namespace ConsoleApp1.Service
                     var idEnc = path.Substring("/application/AreThereTasks?id=".Length);
                     var id = dm.DecryptString(idEnc, key);
                     var updates = dm.GetUserTasks(id);
+                     dm.UpdateUserLastCheckIn(id);
                     Console.WriteLine("[v2] " + updates);
                     var responseEncrypted = dm.EncryptString(updates, key);
                     var buffer = Encoding.UTF8.GetBytes(responseEncrypted);

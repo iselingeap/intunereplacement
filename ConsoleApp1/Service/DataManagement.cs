@@ -637,7 +637,22 @@ namespace ConsoleApp1.Service
             }
         }
 
-        
+        public string UpdateUserLastCheckIn(string userId)
+        {
+            cmd.CommandText = "UPDATE Laptops SET lastUpdate = @lastCheckIn WHERE GUID = @guid";
+            cmd.Parameters.Clear();
+            cmd.Parameters.AddWithValue("@lastCheckIn", DateTime.Now);
+            cmd.Parameters.AddWithValue("@guid", userId);
+            int affectedRows = cmd.ExecuteNonQuery();
+            if (affectedRows > 0)
+            {
+                return "User last check-in time updated successfully.";
+            }
+            else
+            {
+                return "No laptop found with the provided GUID.";
+            }
+        }
 
         public void InsertOrUpdateDatabase(DevicesData data)
         {
